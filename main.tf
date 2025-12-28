@@ -185,6 +185,11 @@ if [ -f /etc/easypanel/data/data.mdb ]; then
   sleep 5
 
 %%{ if gcs_bucket_name != "" ~}
+  # Fix any duplicate fstab entries (cleanup from previous versions)
+  sed -i "\|$${gcs_mount_path}|d" /etc/fstab
+  echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
+  systemctl daemon-reload
+
   # Remount GCS bucket if not mounted
   if ! mountpoint -q $${gcs_mount_path}; then
     mkdir -p $${gcs_mount_path}
