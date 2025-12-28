@@ -204,19 +204,6 @@ resource "google_compute_firewall" "easypanel_admin" {
   target_tags   = ["easypanel"]
 }
 
-resource "google_compute_firewall" "easypanel_n8n" {
-  name    = "${var.instance_name}-allow-n8n"
-  network = "default"
-
-  allow {
-    protocol = "tcp"
-    ports    = ["5678"]
-  }
-
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["easypanel"]
-}
-
 # Startup Script Template
 locals {
   startup_script_template = <<-SCRIPT
