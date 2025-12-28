@@ -76,7 +76,7 @@ variable "tailscale_auth_key" {
 variable "tailscale_hostname" {
   description = "Hostname for this machine on Tailscale network"
   type        = string
-  default     = "easypanel"
+  default     = "easypanel-gce"
 }
 
 variable "tailscale_advertise_routes" {
@@ -224,8 +224,20 @@ if [ -f /etc/easypanel/data/data.mdb ]; then
 %%{ endif ~}
 
 %%{ if tailscale_auth_key != "" ~}
-  # Ensure Tailscale is connected with full config
-  TAILSCALE_ARGS="--hostname=$${tailscale_hostname} --accept-routes --accept-dns=true --ssh"
+  # Ensure TPM disable override exists
+  if [ ! -f /etc/systemd/system/tailscaled.service.d/override.conf ]; then
+    mkdir -p /etc/systemd/system/tailscaled.service.d
+    cat > /etc/systemd/system/tailscaled.service.d/override.conf <<'OVERRIDE'
+[Service]
+Environment="TS_DEBUG_USE_TPM=false"
+OVERRIDE
+    systemctl daemon-reload
+  fi
+  systemctl restart tailscaled
+  sleep 2
+
+  # Reconnect Tailscale with full config
+  TAILSCALE_ARGS="--hostname=$${tailscale_hostname} --advertise-tags=tag:container --accept-routes"
 %%{ if tailscale_exit_node ~}
   TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-exit-node"
 %%{ endif ~}
@@ -260,13 +272,23 @@ systemctl start fail2ban
 # Install Tailscale
 curl -fsSL https://tailscale.com/install.sh | sh
 
+# Disable TPM state sealing (causes issues on GCE)
+mkdir -p /etc/systemd/system/tailscaled.service.d
+cat > /etc/systemd/system/tailscaled.service.d/override.conf <<'OVERRIDE'
+[Service]
+Environment="TS_DEBUG_USE_TPM=false"
+OVERRIDE
+systemctl daemon-reload
+systemctl restart tailscaled
+sleep 2
+
 %%{ if tailscale_auth_key != "" ~}
 echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
 echo 'net.ipv6.conf.all.forwarding = 1' >> /etc/sysctl.conf
 sysctl -p
 
 # Build Tailscale arguments
-TAILSCALE_ARGS="--authkey=$${tailscale_auth_key} --hostname=$${tailscale_hostname} --ssh --accept-routes --accept-dns=true"
+TAILSCALE_ARGS="--authkey=$${tailscale_auth_key} --hostname=$${tailscale_hostname} --advertise-tags=tag:container --accept-routes --reset"
 %%{ if tailscale_exit_node ~}
 TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-exit-node"
 %%{ endif ~}
