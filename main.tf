@@ -223,30 +223,6 @@ if [ -f /etc/easypanel/data/data.mdb ]; then
   fi
 %%{ endif ~}
 
-%%{ if tailscale_auth_key != "" ~}
-  # Ensure TPM disable override exists
-  if [ ! -f /etc/systemd/system/tailscaled.service.d/override.conf ]; then
-    mkdir -p /etc/systemd/system/tailscaled.service.d
-    cat > /etc/systemd/system/tailscaled.service.d/override.conf <<'OVERRIDE'
-[Service]
-Environment="TS_DEBUG_USE_TPM=false"
-OVERRIDE
-    systemctl daemon-reload
-  fi
-  systemctl restart tailscaled
-  sleep 2
-
-  # Reconnect Tailscale with full config
-  TAILSCALE_ARGS="--hostname=$${tailscale_hostname} --advertise-tags=tag:container --accept-routes"
-%%{ if tailscale_exit_node ~}
-  TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-exit-node"
-%%{ endif ~}
-%%{ if tailscale_advertise_routes != "" ~}
-  TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-routes=$${tailscale_advertise_routes}"
-%%{ endif ~}
-  tailscale up $$TAILSCALE_ARGS || true
-%%{ endif ~}
-
   echo "Quick boot completed at $$(date)"
   exit 0
 fi
@@ -278,62 +254,6 @@ ufw --force enable
 systemctl enable fail2ban
 systemctl start fail2ban
 
-# Install Tailscale
-curl -fsSL https://tailscale.com/install.sh | sh
-
-# Disable TPM state sealing (causes issues on GCE)
-mkdir -p /etc/systemd/system/tailscaled.service.d
-cat > /etc/systemd/system/tailscaled.service.d/override.conf <<'OVERRIDE'
-[Service]
-Environment="TS_DEBUG_USE_TPM=false"
-OVERRIDE
-systemctl daemon-reload
-systemctl restart tailscaled
-sleep 2
-
-%%{ if tailscale_auth_key != "" ~}
-echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
-echo 'net.ipv6.conf.all.forwarding = 1' >> /etc/sysctl.conf
-sysctl -p
-
-# Build Tailscale arguments
-TAILSCALE_ARGS="--authkey=$${tailscale_auth_key} --hostname=$${tailscale_hostname} --advertise-tags=tag:container --accept-routes --reset"
-%%{ if tailscale_exit_node ~}
-TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-exit-node"
-%%{ endif ~}
-%%{ if tailscale_advertise_routes != "" ~}
-TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-routes=$${tailscale_advertise_routes}"
-%%{ endif ~}
-
-tailscale up $$TAILSCALE_ARGS
-
-TAILSCALE_IP=$$(tailscale ip -4)
-
-iptables -t nat -A POSTROUTING -s 172.16.0.0/12 -o tailscale0 -j MASQUERADE
-iptables -A FORWARD -i docker0 -o tailscale0 -j ACCEPT
-iptables -A FORWARD -i tailscale0 -o docker0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-
-apt-get install -y iptables-persistent
-netfilter-persistent save
-
-cat > /etc/docker/daemon.json <<'DOCKER'
-{
-  "log-driver": "json-file",
-  "log-opts": {"max-size": "10m", "max-file": "3"},
-  "storage-driver": "overlay2",
-  "dns": ["100.100.100.100", "8.8.8.8"]
-}
-DOCKER
-
-%%{ if ollama_tailscale_host != "" ~}
-echo "Testing Ollama connection to $${ollama_tailscale_host}..."
-sleep 5
-curl -s --connect-timeout 5 "http://$${ollama_tailscale_host}:11434/api/tags" && echo "✓ Ollama reachable" || echo "⚠ Ollama not reachable yet"
-%%{ endif ~}
-
-echo "Tailscale connected: $$TAILSCALE_IP"
-%%{ endif ~}
-
 # Kernel tuning
 cat >> /etc/sysctl.conf <<'SYSCTL'
 net.core.somaxconn = 65535
@@ -351,7 +271,6 @@ if ! command -v docker &> /dev/null; then
     systemctl start docker
 fi
 
-%%{ if tailscale_auth_key == "" ~}
 mkdir -p /etc/docker
 cat > /etc/docker/daemon.json <<'DOCKER'
 {
@@ -360,7 +279,6 @@ cat > /etc/docker/daemon.json <<'DOCKER'
   "storage-driver": "overlay2"
 }
 DOCKER
-%%{ endif ~}
 systemctl restart docker
 
 sleep 10
@@ -411,9 +329,6 @@ chmod +x /etc/cron.daily/docker-cleanup
 
 echo "Easypanel installation completed at $$(date)"
 echo "Public IP: $$(curl -s ifconfig.me)"
-%%{ if tailscale_auth_key != "" ~}
-echo "Tailscale IP: $$(tailscale ip -4)"
-%%{ endif ~}
 SCRIPT
 }
 
@@ -439,13 +354,8 @@ resource "google_compute_instance" "easypanel" {
 
   metadata = {
     startup-script = templatestring(local.startup_script_template, {
-      tailscale_auth_key         = var.tailscale_auth_key
-      tailscale_hostname         = var.tailscale_hostname
-      tailscale_advertise_routes = var.tailscale_advertise_routes
-      tailscale_exit_node        = var.tailscale_exit_node
-      ollama_tailscale_host      = var.ollama_tailscale_host
-      gcs_bucket_name            = var.gcs_bucket_name
-      gcs_mount_path             = var.gcs_mount_path
+      gcs_bucket_name = var.gcs_bucket_name
+      gcs_mount_path  = var.gcs_mount_path
     })
   }
 
