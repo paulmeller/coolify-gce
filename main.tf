@@ -218,7 +218,36 @@ locals {
 set -e
 
 exec > >(tee /var/log/easypanel-install.log) 2>&1
-echo "Starting Easypanel installation at $$(date)"
+echo "Startup script running at $$(date)"
+
+# Check if Easypanel is already installed (subsequent boot with preserved disk)
+if [ -f /etc/easypanel/data/data.mdb ]; then
+  echo "Easypanel already installed - running quick boot sequence"
+
+  # Ensure Docker is running
+  systemctl start docker || true
+
+  # Wait for Docker
+  sleep 5
+
+%%{ if gcs_bucket_name != "" ~}
+  # Remount GCS bucket if not mounted
+  if ! mountpoint -q $${gcs_mount_path}; then
+    mkdir -p $${gcs_mount_path}
+    gcsfuse --implicit-dirs -o allow_other --file-mode=777 --dir-mode=777 $${gcs_bucket_name} $${gcs_mount_path} || echo "GCS mount failed"
+  fi
+%%{ endif ~}
+
+%%{ if tailscale_auth_key != "" ~}
+  # Ensure Tailscale is connected
+  tailscale up --accept-routes --accept-dns=true || true
+%%{ endif ~}
+
+  echo "Quick boot completed at $$(date)"
+  exit 0
+fi
+
+echo "First boot - running full Easypanel installation"
 
 # Update system
 apt-get update
@@ -337,7 +366,9 @@ mkdir -p $${gcs_mount_path}
 gcsfuse --implicit-dirs -o allow_other --file-mode=777 --dir-mode=777 $${gcs_bucket_name} $${gcs_mount_path}
 
 # Make mount persistent across reboots
-echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
+if ! grep -q "$${gcs_bucket_name}" /etc/fstab; then
+  echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
+fi
 
 echo "GCS bucket $${gcs_bucket_name} mounted at $${gcs_mount_path}"
 %%{ endif ~}
