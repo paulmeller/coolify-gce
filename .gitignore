@@ -18,3 +18,4 @@ credentials.json
 
 # OS
 .DS_Store
+terraform-ci-key.json
