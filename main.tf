@@ -258,6 +258,15 @@ apt-get update
 apt-get upgrade -y
 apt-get install -y curl wget lsof fail2ban ufw
 
+# Limit journald log size
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/size.conf <<'JOURNALD'
+[Journal]
+SystemMaxUse=100M
+MaxRetentionSec=7d
+JOURNALD
+systemctl restart systemd-journald
+
 # Configure firewall (only 22, 80, 443 - all services via Traefik)
 ufw default deny incoming
 ufw default allow outgoing
