@@ -9,6 +9,12 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  # Remote state storage (for CI/CD)
+  backend "gcs" {
+    bucket = "context-prompt-terraform-state"
+    prefix = "easypanel"
+  }
 }
 
 # Variables
