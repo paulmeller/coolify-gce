@@ -66,23 +66,11 @@ variable "existing_ip_address" {
 }
 
 
-variable "admin_ip_ranges" {
-  description = "IP ranges allowed to access Easypanel admin (port 3000). Use ['0.0.0.0/0'] for open access."
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-}
-
 variable "tailscale_auth_key" {
   description = "Tailscale auth key for joining the network (leave empty to skip Tailscale setup)"
   type        = string
   default     = ""
   sensitive   = true
-}
-
-variable "disable_public_admin" {
-  description = "Disable public access to port 3000 (use with Tailscale for private admin access)"
-  type        = bool
-  default     = false
 }
 
 variable "ollama_tailscale_host" {
@@ -190,20 +178,6 @@ resource "google_compute_firewall" "easypanel_https" {
   target_tags   = ["easypanel"]
 }
 
-resource "google_compute_firewall" "easypanel_admin" {
-  count   = var.disable_public_admin ? 0 : 1
-  name    = "${var.instance_name}-allow-admin"
-  network = "default"
-
-  allow {
-    protocol = "tcp"
-    ports    = ["3000"]
-  }
-
-  source_ranges = var.admin_ip_ranges
-  target_tags   = ["easypanel"]
-}
-
 # Startup Script Template
 locals {
   startup_script_template = <<-SCRIPT
@@ -247,17 +221,12 @@ apt-get update
 apt-get upgrade -y
 apt-get install -y curl wget lsof fail2ban ufw
 
-# Configure firewall
+# Configure firewall (only 22, 80, 443 - all services via Traefik)
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp
 ufw allow 80/tcp
 ufw allow 443/tcp
-%%{ if tailscale_auth_key == "" ~}
-ufw allow 3000/tcp
-%%{ else ~}
-ufw allow from 100.64.0.0/10 to any port 3000
-%%{ endif ~}
 ufw --force enable
 
 systemctl enable fail2ban
@@ -444,7 +413,8 @@ output "external_ip" {
 }
 
 output "easypanel_url" {
-  value = "http://${local.external_ip}:3000"
+  value       = "http://${local.external_ip}"
+  description = "Access via Traefik on port 80. Configure domain in Easypanel for HTTPS."
 }
 
 output "ssh_command" {

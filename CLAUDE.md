@@ -94,6 +94,12 @@ The `terraform-ci` service account needs:
 - `roles/storage.admin` - Manage GCS state bucket
 - `roles/iam.serviceAccountUser` on default compute SA - Create instances
 
+## Security
+
+- Only ports 22, 80, 443 are open (GCP firewall + ufw)
+- All services accessed via Traefik on port 80/443 with domain routing
+- No direct access to internal ports (3000, 5678, etc.)
+
 ## Gotchas
 
 1. **Terraform version**: Requires >= 1.9 for `templatestring()` function

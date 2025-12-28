@@ -89,8 +89,6 @@ Open the URL in your browser to complete Easypanel setup.
 | `gcs_bucket_name` | GCS bucket to mount | `""` |
 | `gcs_mount_path` | Mount path for GCS bucket | `/mnt/easypanel-storage` |
 | `tailscale_auth_key` | Tailscale auth key | `""` |
-| `disable_public_admin` | Disable public port 3000 | `false` |
-| `admin_ip_ranges` | IPs allowed to access admin | `["0.0.0.0/0"]` |
 
 ### Recommended Machine Types
 
@@ -177,20 +175,9 @@ This means `terraform destroy` + `terraform apply` preserves your Easypanel proj
 
 ## Security Notes
 
-### Restrict Admin Access
+### Firewall
 
-Use the `admin_ip_ranges` variable to restrict port 3000:
-
-```hcl
-admin_ip_ranges = ["YOUR_PUBLIC_IP/32"]
-```
-
-Or disable public admin access entirely with Tailscale:
-
-```hcl
-tailscale_auth_key    = "tskey-auth-..."
-disable_public_admin  = true
-```
+Only ports 22 (SSH), 80 (HTTP), and 443 (HTTPS) are open. All services are accessed via Traefik reverse proxy on port 80/443 with domain-based routing.
 
 ### Set Up a Domain
 
