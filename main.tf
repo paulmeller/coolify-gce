@@ -73,6 +73,24 @@ variable "tailscale_auth_key" {
   sensitive   = true
 }
 
+variable "tailscale_hostname" {
+  description = "Hostname for this machine on Tailscale network"
+  type        = string
+  default     = "easypanel"
+}
+
+variable "tailscale_advertise_routes" {
+  description = "Routes to advertise via Tailscale (comma-separated CIDR blocks)"
+  type        = string
+  default     = ""
+}
+
+variable "tailscale_exit_node" {
+  description = "Advertise as Tailscale exit node"
+  type        = bool
+  default     = false
+}
+
 variable "ollama_tailscale_host" {
   description = "Tailscale hostname or IP of your Ollama server (e.g., 'ollama' or '100.x.x.x')"
   type        = string
@@ -206,8 +224,15 @@ if [ -f /etc/easypanel/data/data.mdb ]; then
 %%{ endif ~}
 
 %%{ if tailscale_auth_key != "" ~}
-  # Ensure Tailscale is connected
-  tailscale up --accept-routes --accept-dns=true || true
+  # Ensure Tailscale is connected with full config
+  TAILSCALE_ARGS="--hostname=$${tailscale_hostname} --accept-routes --accept-dns=true --ssh"
+%%{ if tailscale_exit_node ~}
+  TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-exit-node"
+%%{ endif ~}
+%%{ if tailscale_advertise_routes != "" ~}
+  TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-routes=$${tailscale_advertise_routes}"
+%%{ endif ~}
+  tailscale up $$TAILSCALE_ARGS || true
 %%{ endif ~}
 
   echo "Quick boot completed at $$(date)"
@@ -240,7 +265,16 @@ echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
 echo 'net.ipv6.conf.all.forwarding = 1' >> /etc/sysctl.conf
 sysctl -p
 
-tailscale up --authkey=$${tailscale_auth_key} --ssh --accept-routes --accept-dns=true
+# Build Tailscale arguments
+TAILSCALE_ARGS="--authkey=$${tailscale_auth_key} --hostname=$${tailscale_hostname} --ssh --accept-routes --accept-dns=true"
+%%{ if tailscale_exit_node ~}
+TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-exit-node"
+%%{ endif ~}
+%%{ if tailscale_advertise_routes != "" ~}
+TAILSCALE_ARGS="$$TAILSCALE_ARGS --advertise-routes=$${tailscale_advertise_routes}"
+%%{ endif ~}
+
+tailscale up $$TAILSCALE_ARGS
 
 TAILSCALE_IP=$$(tailscale ip -4)
 
@@ -374,10 +408,13 @@ resource "google_compute_instance" "easypanel" {
 
   metadata = {
     startup-script = templatestring(local.startup_script_template, {
-      tailscale_auth_key    = var.tailscale_auth_key
-      ollama_tailscale_host = var.ollama_tailscale_host
-      gcs_bucket_name       = var.gcs_bucket_name
-      gcs_mount_path        = var.gcs_mount_path
+      tailscale_auth_key        = var.tailscale_auth_key
+      tailscale_hostname        = var.tailscale_hostname
+      tailscale_advertise_routes = var.tailscale_advertise_routes
+      tailscale_exit_node       = var.tailscale_exit_node
+      ollama_tailscale_host     = var.ollama_tailscale_host
+      gcs_bucket_name           = var.gcs_bucket_name
+      gcs_mount_path            = var.gcs_mount_path
     })
   }
 

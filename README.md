@@ -89,6 +89,9 @@ Open the URL in your browser to complete Easypanel setup.
 | `gcs_bucket_name` | GCS bucket to mount | `""` |
 | `gcs_mount_path` | Mount path for GCS bucket | `/mnt/easypanel-storage` |
 | `tailscale_auth_key` | Tailscale auth key | `""` |
+| `tailscale_hostname` | Hostname on Tailscale network | `easypanel` |
+| `tailscale_advertise_routes` | Routes to advertise (CIDR, comma-separated) | `""` |
+| `tailscale_exit_node` | Advertise as exit node | `false` |
 
 ### Recommended Machine Types
 
