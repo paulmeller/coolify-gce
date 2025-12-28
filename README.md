@@ -113,21 +113,33 @@ This repo includes a GitHub Actions workflow that auto-deploys on push to `main`
    gsutil versioning set on gs://YOUR_PROJECT-terraform-state
    ```
 
-2. **Create service account**:
+2. **Create service account with required permissions**:
    ```bash
+   # Create service account
    gcloud iam service-accounts create terraform-ci --display-name="Terraform CI/CD"
 
+   # Grant compute admin role
    gcloud projects add-iam-policy-binding YOUR_PROJECT \
      --member="serviceAccount:terraform-ci@YOUR_PROJECT.iam.gserviceaccount.com" \
      --role="roles/compute.admin" --condition=None
 
+   # Grant storage admin role
    gcloud projects add-iam-policy-binding YOUR_PROJECT \
      --member="serviceAccount:terraform-ci@YOUR_PROJECT.iam.gserviceaccount.com" \
      --role="roles/storage.admin" --condition=None
 
+   # Grant permission to use the default compute service account
+   gcloud iam service-accounts add-iam-policy-binding \
+     YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+     --member="serviceAccount:terraform-ci@YOUR_PROJECT.iam.gserviceaccount.com" \
+     --role="roles/iam.serviceAccountUser"
+
+   # Create key file
    gcloud iam service-accounts keys create terraform-ci-key.json \
      --iam-account=terraform-ci@YOUR_PROJECT.iam.gserviceaccount.com
    ```
+
+   > **Note**: Replace `YOUR_PROJECT_NUMBER` with your GCP project number (find it with `gcloud projects describe YOUR_PROJECT --format='value(projectNumber)'`)
 
 3. **Add GitHub Secrets** (Settings → Secrets → Actions):
    - `GCP_CREDENTIALS` - Contents of `terraform-ci-key.json`
