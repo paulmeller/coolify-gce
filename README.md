@@ -8,7 +8,6 @@ Deploy [Easypanel](https://easypanel.io) - a modern server control panel - on Go
 - **Idempotent Boots**: Fast restarts (~10s) with service preservation across `terraform destroy/apply`
 - **Static IP**: Persistent external IP address
 - **GCS Storage**: Mount Google Cloud Storage buckets via gcsfuse
-- **Tailscale Integration**: Optional private networking with Tailscale
 - **CI/CD Ready**: GitHub Actions workflow for auto-deploy on push
 - **Daily Backups**: Automatic disk snapshots with 3-day retention
 - **Ubuntu 24.04 LTS**: Latest long-term support release
@@ -88,10 +87,6 @@ Open the URL in your browser to complete Easypanel setup.
 | `existing_ip_address` | Existing IP address | `""` |
 | `gcs_bucket_name` | GCS bucket to mount | `""` |
 | `gcs_mount_path` | Mount path for GCS bucket | `/mnt/easypanel-storage` |
-| `tailscale_auth_key` | Tailscale auth key | `""` |
-| `tailscale_hostname` | Hostname on Tailscale network | `easypanel` |
-| `tailscale_advertise_routes` | Routes to advertise (CIDR, comma-separated) | `""` |
-| `tailscale_exit_node` | Advertise as exit node | `false` |
 
 ### Recommended Machine Types
 
@@ -101,6 +96,50 @@ Open the URL in your browser to complete Easypanel setup.
 | `e2-medium` | 2 | 4GB | Small projects |
 | `e2-standard-2` | 2 | 8GB | Production |
 | `e2-standard-4` | 4 | 16GB | Heavy workloads |
+
+## Tailscale Integration
+
+Tailscale is managed via Easypanel container (not host-level) for easier configuration.
+
+### Setup in Easypanel
+
+Create a new service with this Docker Compose:
+
+```yaml
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: easypanel
+    network_mode: host
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - /dev/net/tun:/dev/net/tun
+      - tailscale-data:/var/lib/tailscale
+    environment:
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: easypanel
+      TS_USERSPACE: "false"
+      TS_EXTRA_ARGS: --advertise-tags=tag:container --accept-routes --advertise-exit-node
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  tailscale-data:
+```
+
+### Key Settings
+
+- `network_mode: host` + `TS_USERSPACE: "false"` - Creates `tailscale0` interface on host
+- `TS_AUTHKEY` - Generate at https://login.tailscale.com/admin/settings/keys (reusable, no expiry)
+- `--advertise-exit-node` - Requires approval in Tailscale admin console
 
 ## CI/CD with GitHub Actions
 
@@ -148,7 +187,6 @@ This repo includes a GitHub Actions workflow that auto-deploys on push to `main`
    - `TF_VAR_EXISTING_IP_NAME` - Static IP name (if using)
    - `TF_VAR_EXISTING_IP_ADDRESS` - Static IP address (if using)
    - `TF_VAR_GCS_BUCKET_NAME` - GCS bucket for storage (if using)
-   - `TF_VAR_TAILSCALE_AUTH_KEY` - Tailscale key (if using)
 
 4. **Update backend** in `main.tf`:
    ```hcl
@@ -171,7 +209,6 @@ The startup script detects existing installations and takes a fast path on subse
 - **Subsequent boots**: Quick boot (~10 seconds)
   - Starts Docker
   - Mounts GCS bucket (if configured)
-  - Connects Tailscale (if configured)
   - **Preserves all running services**
 
 This means `terraform destroy` + `terraform apply` preserves your Easypanel projects and running containers.
@@ -199,7 +236,6 @@ terraform output easypanel_url        # Admin panel URL
 terraform output ssh_command          # SSH access command
 terraform output installation_log_command  # View install logs
 terraform output gcs_mount_info       # GCS mount status
-terraform output tailscale_info       # Tailscale status
 ```
 
 ## Troubleshooting
@@ -221,8 +257,6 @@ sudo docker ps
 ```
 
 ### Common Issues
-
-**Port 3000 not accessible**: Wait 3-5 minutes for installation to complete
 
 **Services not starting after reboot**: Check if quick boot path was taken:
 ```bash
