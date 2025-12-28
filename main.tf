@@ -66,37 +66,6 @@ variable "existing_ip_address" {
 }
 
 
-variable "tailscale_auth_key" {
-  description = "Tailscale auth key for joining the network (leave empty to skip Tailscale setup)"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "tailscale_hostname" {
-  description = "Hostname for this machine on Tailscale network"
-  type        = string
-  default     = "easypanel-gce"
-}
-
-variable "tailscale_advertise_routes" {
-  description = "Routes to advertise via Tailscale (comma-separated CIDR blocks)"
-  type        = string
-  default     = ""
-}
-
-variable "tailscale_exit_node" {
-  description = "Advertise as Tailscale exit node"
-  type        = bool
-  default     = false
-}
-
-variable "ollama_tailscale_host" {
-  description = "Tailscale hostname or IP of your Ollama server (e.g., 'ollama' or '100.x.x.x')"
-  type        = string
-  default     = ""
-}
-
 variable "gcs_bucket_name" {
   description = "GCS bucket to mount via gcsfuse (leave empty to skip)"
   type        = string
@@ -310,10 +279,9 @@ sed -i 's/#user_allow_other/user_allow_other/' /etc/fuse.conf
 mkdir -p $${gcs_mount_path}
 gcsfuse --implicit-dirs -o allow_other --file-mode=777 --dir-mode=777 $${gcs_bucket_name} $${gcs_mount_path}
 
-# Make mount persistent across reboots
-if ! grep -q "$${gcs_bucket_name}" /etc/fstab; then
-  echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
-fi
+# Make mount persistent across reboots (remove any existing entries first to avoid duplicates)
+sed -i "\|$${gcs_mount_path}|d" /etc/fstab
+echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
 
 echo "GCS bucket $${gcs_bucket_name} mounted at $${gcs_mount_path}"
 %%{ endif ~}
@@ -405,15 +373,6 @@ output "installation_log_command" {
 
 output "disk_info" {
   value = local.disk_exists ? "Disk: ${var.instance_name}-boot (existing)" : "Disk: ${var.instance_name}-boot (created)"
-}
-
-output "tailscale_info" {
-  value     = var.tailscale_auth_key != "" ? "Tailscale enabled" : "Tailscale not configured"
-  sensitive = true
-}
-
-output "ollama_info" {
-  value = var.ollama_tailscale_host != "" ? "OLLAMA_HOST=http://${var.ollama_tailscale_host}:11434" : "Ollama not configured"
 }
 
 output "gcs_mount_info" {
