@@ -430,13 +430,13 @@ resource "google_compute_instance" "easypanel" {
 
   metadata = {
     startup-script = templatestring(local.startup_script_template, {
-      tailscale_auth_key        = var.tailscale_auth_key
-      tailscale_hostname        = var.tailscale_hostname
+      tailscale_auth_key         = var.tailscale_auth_key
+      tailscale_hostname         = var.tailscale_hostname
       tailscale_advertise_routes = var.tailscale_advertise_routes
-      tailscale_exit_node       = var.tailscale_exit_node
-      ollama_tailscale_host     = var.ollama_tailscale_host
-      gcs_bucket_name           = var.gcs_bucket_name
-      gcs_mount_path            = var.gcs_mount_path
+      tailscale_exit_node        = var.tailscale_exit_node
+      ollama_tailscale_host      = var.ollama_tailscale_host
+      gcs_bucket_name            = var.gcs_bucket_name
+      gcs_mount_path             = var.gcs_mount_path
     })
   }
 
