@@ -187,7 +187,7 @@ if [ -f /etc/easypanel/data/data.mdb ]; then
 %%{ if gcs_bucket_name != "" ~}
   # Fix any duplicate fstab entries (cleanup from previous versions)
   sed -i "\|$${gcs_mount_path}|d" /etc/fstab
-  echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
+  echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,nofail,_netdev,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
   systemctl daemon-reload
 
   # Remount GCS bucket if not mounted
@@ -286,7 +286,7 @@ gcsfuse --implicit-dirs -o allow_other --file-mode=777 --dir-mode=777 $${gcs_buc
 
 # Make mount persistent across reboots (remove any existing entries first to avoid duplicates)
 sed -i "\|$${gcs_mount_path}|d" /etc/fstab
-echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
+echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,nofail,_netdev,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
 
 echo "GCS bucket $${gcs_bucket_name} mounted at $${gcs_mount_path}"
 %%{ endif ~}
