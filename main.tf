@@ -1,8 +1,8 @@
-# Easypanel on Google Compute Engine
+# Coolify on Google Compute Engine
 # Terraform Configuration
 
 terraform {
-  required_version = ">= 1.9"
+  required_version = ">= 1.0"
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -10,14 +10,12 @@ terraform {
     }
   }
 
-  # Remote state storage (for CI/CD)
   backend "gcs" {
     bucket = "context-prompt-terraform-state"
-    prefix = "easypanel"
+    prefix = "coolify"
   }
 }
 
-# Variables
 variable "project_id" {
   description = "GCP Project ID"
   type        = string
@@ -36,7 +34,7 @@ variable "zone" {
 }
 
 variable "machine_type" {
-  description = "GCE Machine Type (minimum 2GB RAM recommended)"
+  description = "GCE Machine Type"
   type        = string
   default     = "e2-medium"
 }
@@ -50,21 +48,8 @@ variable "disk_size" {
 variable "instance_name" {
   description = "Name for the GCE instance"
   type        = string
-  default     = "easypanel-server"
+  default     = "coolify-server"
 }
-
-variable "existing_ip_name" {
-  description = "Name of an existing static IP to use (leave empty to create new)"
-  type        = string
-  default     = ""
-}
-
-variable "existing_ip_address" {
-  description = "Existing static IP address (required if existing_ip_name is set)"
-  type        = string
-  default     = ""
-}
-
 
 variable "gcs_bucket_name" {
   description = "GCS bucket to mount via gcsfuse (leave empty to skip)"
@@ -75,343 +60,142 @@ variable "gcs_bucket_name" {
 variable "gcs_mount_path" {
   description = "Path to mount the GCS bucket"
   type        = string
-  default     = "/mnt/easypanel-storage"
+  default     = "/mnt/gcs-storage"
 }
 
-# Provider Configuration
 provider "google" {
   project = var.project_id
   region  = var.region
   zone    = var.zone
 }
 
-# Static External IP (only created if not using existing)
-resource "google_compute_address" "easypanel_ip" {
-  count  = var.existing_ip_name == "" ? 1 : 0
+resource "google_compute_address" "coolify" {
   name   = "${var.instance_name}-ip"
   region = var.region
-}
-
-# Check if boot disk already exists (for reuse after destroy/apply)
-data "external" "disk_check" {
-  program = ["bash", "-c", <<-EOF
-    if gcloud compute disks describe ${var.instance_name}-boot --zone=${var.zone} --project=${var.project_id} &>/dev/null; then
-      echo '{"exists": "true"}'
-    else
-      echo '{"exists": "false"}'
-    fi
-  EOF
-  ]
-}
-
-# Reference existing disk if it exists
-data "google_compute_disk" "existing_boot" {
-  count   = data.external.disk_check.result.exists == "true" ? 1 : 0
-  name    = "${var.instance_name}-boot"
-  zone    = var.zone
-  project = var.project_id
-}
-
-locals {
-  external_ip    = var.existing_ip_name != "" ? var.existing_ip_address : google_compute_address.easypanel_ip[0].address
-  disk_exists    = data.external.disk_check.result.exists == "true"
-  boot_disk_link = local.disk_exists ? data.google_compute_disk.existing_boot[0].self_link : google_compute_disk.boot[0].self_link
-}
-
-# Boot disk (created only if it doesn't already exist)
-resource "google_compute_disk" "boot" {
-  count = local.disk_exists ? 0 : 1
-  name  = "${var.instance_name}-boot"
-  type  = "pd-ssd"
-  zone  = var.zone
-  size  = var.disk_size
-  image = "ubuntu-os-cloud/ubuntu-2404-lts-amd64"
-
-  labels = {
-    app        = "easypanel"
-    managed-by = "terraform"
-  }
 
   lifecycle {
-    prevent_destroy = false
-    ignore_changes  = [image, labels]
+    prevent_destroy = true
   }
 }
 
-# Firewall Rules
-resource "google_compute_firewall" "easypanel_http" {
-  name    = "${var.instance_name}-allow-http"
+resource "google_compute_firewall" "coolify" {
+  name    = "${var.instance_name}-allow-web"
   network = "default"
 
   allow {
     protocol = "tcp"
-    ports    = ["80"]
+    ports    = ["22", "80", "443", "8000", "6001", "6002"]
   }
 
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["easypanel"]
+  target_tags   = ["coolify"]
 }
 
-resource "google_compute_firewall" "easypanel_https" {
-  name    = "${var.instance_name}-allow-https"
-  network = "default"
-
-  allow {
-    protocol = "tcp"
-    ports    = ["443"]
-  }
-
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["easypanel"]
-}
-
-# Startup Script Template
 locals {
-  startup_script_template = <<-SCRIPT
+  startup_script = <<-SCRIPT
 #!/bin/bash
 set -e
+exec > >(tee /var/log/coolify-install.log) 2>&1
+echo "Startup script running at $(date)"
 
-exec > >(tee /var/log/easypanel-install.log) 2>&1
-echo "Startup script running at $$(date)"
-
-# Check if Easypanel is already installed (subsequent boot with preserved disk)
-if [ -f /etc/easypanel/data/data.mdb ]; then
-  echo "Easypanel already installed - running quick boot sequence"
-
-  # Ensure Docker is running
+# Quick boot path if already installed
+if [ -f /data/coolify/.env ]; then
+  echo "Coolify already installed - quick boot"
   systemctl start docker || true
-
-  # Wait for Docker
   sleep 5
-
-%%{ if gcs_bucket_name != "" ~}
-  # Fix any duplicate fstab entries (cleanup from previous versions)
-  sed -i "\|$${gcs_mount_path}|d" /etc/fstab
-  echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,nofail,_netdev,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
-  systemctl daemon-reload
-
+%{if var.gcs_bucket_name != ""}
   # Remount GCS bucket if not mounted
-  if ! mountpoint -q $${gcs_mount_path}; then
-    mkdir -p $${gcs_mount_path}
-    gcsfuse --implicit-dirs -o allow_other --file-mode=777 --dir-mode=777 $${gcs_bucket_name} $${gcs_mount_path} || echo "GCS mount failed"
+  if ! mountpoint -q ${var.gcs_mount_path}; then
+    mkdir -p ${var.gcs_mount_path}
+    gcsfuse --implicit-dirs -o allow_other --file-mode=777 --dir-mode=777 ${var.gcs_bucket_name} ${var.gcs_mount_path} || echo "GCS mount failed"
   fi
-%%{ endif ~}
-
-  echo "Quick boot completed at $$(date)"
+%{endif}
+  echo "Quick boot completed at $(date)"
   exit 0
 fi
 
-echo "First boot - running full Easypanel installation"
+echo "First boot - installing Coolify"
 
-# Update system
-apt-get update
-apt-get upgrade -y
-apt-get install -y curl wget lsof fail2ban ufw
-
-# Limit journald log size
-mkdir -p /etc/systemd/journald.conf.d
-cat > /etc/systemd/journald.conf.d/size.conf <<'JOURNALD'
-[Journal]
-SystemMaxUse=100M
-MaxRetentionSec=7d
-JOURNALD
-systemctl restart systemd-journald
-
-# Configure firewall (only 22, 80, 443 - all services via Traefik)
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow 22/tcp
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw --force enable
-
-systemctl enable fail2ban
-systemctl start fail2ban
-
-# Kernel tuning
-cat >> /etc/sysctl.conf <<'SYSCTL'
-net.core.somaxconn = 65535
-net.ipv4.tcp_max_syn_backlog = 65535
-net.ipv4.ip_local_port_range = 1024 65535
-net.ipv4.tcp_tw_reuse = 1
-vm.swappiness = 10
-SYSCTL
-sysctl -p
-
-# Install Docker
-if ! command -v docker &> /dev/null; then
-    curl -sSL https://get.docker.com | sh
-    systemctl enable docker
-    systemctl start docker
-fi
-
-mkdir -p /etc/docker
-cat > /etc/docker/daemon.json <<'DOCKER'
-{
-  "log-driver": "json-file",
-  "log-opts": {"max-size": "10m", "max-file": "3"},
-  "storage-driver": "overlay2"
-}
-DOCKER
-systemctl restart docker
-
-sleep 10
-docker swarm leave --force 2>/dev/null || true
-
-echo "Installing Easypanel..."
-docker pull easypanel/easypanel:latest
-docker run --rm -i \
-  -v /etc/easypanel:/etc/easypanel \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  easypanel/easypanel setup
-
-# Create /data directory for n8n and other services
-mkdir -p /data
-chmod 777 /data
-
-%%{ if gcs_bucket_name != "" ~}
-# Install and configure GCS FUSE (Ubuntu 24.04 noble)
+%{if var.gcs_bucket_name != ""}
+# Install and configure GCS FUSE
 echo "Setting up GCS FUSE mount..."
 curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/gcsfuse.gpg
 echo "deb [signed-by=/usr/share/keyrings/gcsfuse.gpg] https://packages.cloud.google.com/apt gcsfuse-noble main" | tee /etc/apt/sources.list.d/gcsfuse.list
 apt-get update
 apt-get install -y gcsfuse
 
-# Enable allow_other support (required for -o allow_other to work)
+# Enable allow_other
 sed -i 's/#user_allow_other/user_allow_other/' /etc/fuse.conf
 
-# Create mount point and mount bucket
-mkdir -p $${gcs_mount_path}
-gcsfuse --implicit-dirs -o allow_other --file-mode=777 --dir-mode=777 $${gcs_bucket_name} $${gcs_mount_path}
+# Mount bucket
+mkdir -p ${var.gcs_mount_path}
+gcsfuse --implicit-dirs -o allow_other --file-mode=777 --dir-mode=777 ${var.gcs_bucket_name} ${var.gcs_mount_path}
 
-# Make mount persistent across reboots (remove any existing entries first to avoid duplicates)
-sed -i "\|$${gcs_mount_path}|d" /etc/fstab
-echo "$${gcs_bucket_name} $${gcs_mount_path} gcsfuse rw,nofail,_netdev,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
+# Persist in fstab
+sed -i "\|${var.gcs_mount_path}|d" /etc/fstab
+echo "${var.gcs_bucket_name} ${var.gcs_mount_path} gcsfuse rw,nofail,_netdev,implicit_dirs,allow_other,file_mode=777,dir_mode=777" >> /etc/fstab
+echo "GCS bucket ${var.gcs_bucket_name} mounted at ${var.gcs_mount_path}"
+%{endif}
 
-echo "GCS bucket $${gcs_bucket_name} mounted at $${gcs_mount_path}"
-%%{ endif ~}
+# Install Coolify
+echo "Installing Coolify..."
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 
-apt-get install -y unattended-upgrades
-echo 'Unattended-Upgrade::Automatic-Reboot "false";' >> /etc/apt/apt.conf.d/50unattended-upgrades
-
-cat > /etc/cron.daily/docker-cleanup <<'CRON'
-#!/bin/bash
-docker system prune -af --volumes --filter "until=168h"
-CRON
-chmod +x /etc/cron.daily/docker-cleanup
-
-echo "Easypanel installation completed at $$(date)"
-echo "Public IP: $$(curl -s ifconfig.me)"
+echo "Coolify installation completed at $(date)"
 SCRIPT
 }
 
-# GCE Instance
-resource "google_compute_instance" "easypanel" {
+# Persistent boot disk (survives instance deletion)
+resource "google_compute_disk" "coolify" {
+  name = "${var.instance_name}-disk"
+  type = "pd-ssd"
+  zone = var.zone
+  size = var.disk_size
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [image, labels, snapshot]
+  }
+}
+
+resource "google_compute_instance" "coolify" {
   name         = var.instance_name
   machine_type = var.machine_type
   zone         = var.zone
 
-  tags = ["easypanel", "http-server", "https-server"]
+  tags = ["coolify"]
 
   boot_disk {
-    source      = local.boot_disk_link
+    source      = google_compute_disk.coolify.self_link
     auto_delete = false
   }
 
   network_interface {
     network = "default"
     access_config {
-      nat_ip = local.external_ip
+      nat_ip = google_compute_address.coolify.address
     }
   }
 
-  metadata = {
-    startup-script = templatestring(local.startup_script_template, {
-      gcs_bucket_name = var.gcs_bucket_name
-      gcs_mount_path  = var.gcs_mount_path
-    })
-  }
-
-  allow_stopping_for_update = true
+  metadata_startup_script = local.startup_script
 
   service_account {
     scopes = ["cloud-platform"]
   }
 
-  labels = {
-    app        = "easypanel"
-    managed-by = "terraform"
-  }
-
   lifecycle {
-    # Prevent recreation when startup script changes (it only runs on first boot anyway)
-    ignore_changes = [
-      metadata["startup-script"],
-      boot_disk, # Don't recreate if disk config changes
-    ]
-    # Uncomment to prevent accidental destruction:
-    # prevent_destroy = true
+    ignore_changes = [boot_disk]
   }
-}
-
-# Outputs
-output "instance_name" {
-  value = google_compute_instance.easypanel.name
 }
 
 output "external_ip" {
-  value = local.external_ip
+  value = google_compute_address.coolify.address
 }
 
-output "easypanel_url" {
-  value       = "http://${local.external_ip}"
-  description = "Access via Traefik on port 80. Configure domain in Easypanel for HTTPS."
+output "coolify_url" {
+  value = "http://${google_compute_address.coolify.address}:8000"
 }
 
 output "ssh_command" {
-  value = "gcloud compute ssh ${google_compute_instance.easypanel.name} --zone=${var.zone}"
-}
-
-output "installation_log_command" {
-  value = "gcloud compute ssh ${google_compute_instance.easypanel.name} --zone=${var.zone} --command='sudo tail -f /var/log/easypanel-install.log'"
-}
-
-output "disk_info" {
-  value = local.disk_exists ? "Disk: ${var.instance_name}-boot (existing)" : "Disk: ${var.instance_name}-boot (created)"
-}
-
-output "gcs_mount_info" {
-  value = var.gcs_bucket_name != "" ? "GCS bucket '${var.gcs_bucket_name}' mounted at ${var.gcs_mount_path}" : "GCS FUSE not configured"
-}
-
-# Snapshot schedule for backups
-resource "google_compute_resource_policy" "daily_backup" {
-  name   = "${var.instance_name}-daily-backup"
-  region = var.region
-
-  snapshot_schedule_policy {
-    schedule {
-      daily_schedule {
-        days_in_cycle = 1
-        start_time    = "03:00"
-      }
-    }
-    retention_policy {
-      max_retention_days    = 3
-      on_source_disk_delete = "KEEP_AUTO_SNAPSHOTS"
-    }
-    snapshot_properties {
-      labels            = { backup = "daily" }
-      storage_locations = [var.region]
-    }
-  }
-}
-
-resource "google_compute_disk_resource_policy_attachment" "backup_attachment" {
-  name = google_compute_resource_policy.daily_backup.name
-  disk = "${var.instance_name}-boot"
-  zone = var.zone
-
-  # Only attach after disk exists (either created or existing)
-  depends_on = [google_compute_instance.easypanel]
+  value = "gcloud compute ssh ${var.instance_name} --zone=${var.zone}"
 }

@@ -1,24 +1,10 @@
-# Easypanel GCE - Terraform Variables
-# Copy this file to terraform.tfvars and fill in your values
-
-# Required: Your GCP Project ID
-project_id = "YOUR_PROJECT_ID"
-
-# Optional: Customize these as needed
+project_id    = "your-project-id"
 region        = "us-central1"
 zone          = "us-central1-a"
-machine_type  = "e2-medium" # Minimum 2GB RAM recommended
-disk_size     = 50          # GB
-instance_name = "easypanel-server"
+machine_type  = "e2-medium"
+disk_size     = 50
+instance_name = "coolify-server"
 
-# Optional: Use an existing static IP instead of creating a new one
-# To use an existing IP, uncomment and fill in both values:
-# existing_ip_name    = "my-existing-ip"      # Name of your reserved IP in GCP
-# existing_ip_address = "34.123.45.67"        # The actual IP address
-existing_ip_name    = "YOUR_IP_NAME"
-existing_ip_address = "YOUR_STATIC_IP"
-
-# GCS FUSE: Mount a GCS bucket for persistent storage
-# The bucket will be mounted at gcs_mount_path (default: /mnt/easypanel-storage)
-gcs_bucket_name = "YOUR_PROJECT_ID-easypanel-data"
-gcs_mount_path  = "/mnt/easypanel-storage"
+# Optional: GCS FUSE mount (leave empty to skip)
+# gcs_bucket_name = "your-bucket-name"
+# gcs_mount_path  = "/mnt/gcs-storage"

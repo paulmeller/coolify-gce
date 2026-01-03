@@ -4,7 +4,7 @@ This file provides context for Claude Code when working with this repository.
 
 ## Project Overview
 
-Terraform configuration for deploying [Easypanel](https://easypanel.io) on Google Compute Engine with CI/CD via GitHub Actions.
+Terraform configuration for deploying [Coolify](https://coolify.io) on Google Compute Engine with CI/CD via GitHub Actions.
 
 ## Key Files
 
@@ -17,12 +17,13 @@ Terraform configuration for deploying [Easypanel](https://easypanel.io) on Googl
 
 ## Architecture
 
-- **GCE Instance**: Runs Docker + Easypanel on Ubuntu 24.04 LTS
-- **Boot Disk**: Persistent SSD with `auto_delete = false` (survives instance deletion)
+- **GCE Instance**: `coolify-server` (e2-medium) running Ubuntu 24.04 LTS
+- **Boot Disk**: Persistent SSD (50GB) with `prevent_destroy = true` - survives terraform destroy
+- **Static IP**: Preserved with `prevent_destroy = true`
 - **Startup Script**: Idempotent - detects existing installation and takes quick boot path
 - **State Storage**: GCS bucket (`context-prompt-terraform-state`)
 - **CI/CD**: GitHub Actions triggers `terraform apply` on push to main
-- **Tailscale**: Managed via Easypanel container (not host-level)
+- **GCS FUSE**: Optional bucket mounting at `/mnt/gcs-storage`
 
 ## Important Concepts
 
@@ -31,82 +32,148 @@ Terraform configuration for deploying [Easypanel](https://easypanel.io) on Googl
 The startup script in `main.tf` has two paths:
 
 1. **First boot**: Full installation (~5-10 min)
-   - Installs Docker, Easypanel, gcsfuse
-   - Configures firewall (ufw), fail2ban
-   - Sets up journald log limits
-   - Creates `/etc/easypanel/data/data.mdb` marker
-
-2. **Quick boot**: Detected via marker file (~10 sec)
-   - Starts Docker
+   - Installs Docker and Coolify
+   - Installs gcsfuse (if GCS bucket configured)
    - Mounts GCS bucket
-   - **Preserves Docker Swarm services**
+   - Creates `/data/coolify/.env` marker
 
-### Disk Persistence
+2. **Quick boot**: Detected via `/data/coolify/.env` (~10 sec)
+   - Starts Docker
+   - Mounts GCS bucket (if configured)
+   - **Preserves Docker containers and services**
 
-The boot disk is preserved across `terraform destroy`:
-- `auto_delete = false` on the boot disk
-- `data.external.disk_check` detects if disk exists
-- Existing disk is reused on next `terraform apply`
+### Resource Persistence
 
-### Tailscale (Container-Based)
+Both disk and static IP have `prevent_destroy = true`:
+- `google_compute_disk.coolify` - Boot disk persists across terraform destroy
+- `google_compute_address.coolify` - Static IP persists across terraform destroy
 
-Tailscale is NOT installed by Terraform. Instead, it's managed via Easypanel container:
-
-```yaml
-services:
-  tailscale:
-    image: tailscale/tailscale:latest
-    network_mode: host
-    privileged: true
-    environment:
-      TS_USERSPACE: "false"  # Creates tailscale0 on host
-      TS_EXTRA_ARGS: --advertise-tags=tag:container --accept-routes --advertise-exit-node
+To destroy only the instance (preserving disk and IP):
+```bash
+terraform destroy -target=google_compute_instance.coolify -target=google_compute_firewall.coolify
 ```
 
-Key points:
-- `network_mode: host` + `TS_USERSPACE: "false"` = kernel TUN mode
-- Creates `tailscale0` interface on host
-- All containers get Tailscale access via host network
-- Exit node requires approval in Tailscale admin console
+### GCS FUSE (Optional)
 
-### Terraform Escaping
+Mount a GCS bucket for persistent storage:
 
-In `templatestring()` function:
-- `$$` → literal `$` (for bash variables like `$(date)`)
-- `%%{` → literal `%{` (for Terraform conditionals in script)
-- `$${var}` → literal `${var}` (for bash variable expansion)
+```hcl
+# terraform.tfvars
+gcs_bucket_name = "your-bucket-name"
+gcs_mount_path  = "/mnt/gcs-storage"  # default
+```
+
+The startup script:
+- Installs gcsfuse on first boot
+- Enables `allow_other` in fuse.conf
+- Mounts with `--implicit-dirs -o allow_other --file-mode=777 --dir-mode=777`
+- Adds to fstab with `nofail,_netdev` for persistent mounting
+
+### Terraform Template Syntax
+
+In the `locals` startup script block:
+- `%{if var.gcs_bucket_name != ""}` → Terraform conditional
+- `${var.gcs_mount_path}` → Terraform variable interpolation
+- `$(date)` → Bash command substitution (no escaping needed in locals)
+
+## Firewall Ports
+
+| Port | Purpose |
+|------|---------|
+| 22 | SSH |
+| 80 | HTTP (Traefik) |
+| 443 | HTTPS (Traefik) |
+| 8000 | Coolify UI |
+| 6001-6002 | Coolify realtime service |
+
+## Terraform Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `project_id` | GCP Project ID | *required* |
+| `region` | GCP Region | `us-central1` |
+| `zone` | GCP Zone | `us-central1-a` |
+| `machine_type` | Instance type | `e2-medium` |
+| `disk_size` | Boot disk (GB) | `50` |
+| `instance_name` | Instance name | `coolify-server` |
+| `gcs_bucket_name` | GCS bucket to mount | `""` (disabled) |
+| `gcs_mount_path` | Mount path for GCS | `/mnt/gcs-storage` |
+
+## Terraform Outputs
+
+| Output | Description |
+|--------|-------------|
+| `external_ip` | Server IP address |
+| `coolify_url` | Admin panel URL (port 8000) |
+| `ssh_command` | SSH access command |
 
 ## Common Tasks
 
-### Test destroy/apply cycle
+### Deploy from scratch
 ```bash
-terraform destroy -auto-approve
-terraform apply -auto-approve
+terraform init
+terraform apply
+```
+
+### Test destroy/apply cycle (preserves disk/IP)
+```bash
+terraform destroy -target=google_compute_instance.coolify -target=google_compute_firewall.coolify
+terraform apply
 ```
 
 ### Check services after deploy
 ```bash
-gcloud compute ssh easypanel-server --zone=us-central1-a --command="sudo docker service ls"
+gcloud compute ssh coolify-server --zone=us-central1-a --command="sudo docker ps"
 ```
 
 ### View startup log
 ```bash
-gcloud compute ssh easypanel-server --zone=us-central1-a --command="sudo cat /var/log/easypanel-install.log"
+gcloud compute ssh coolify-server --zone=us-central1-a --command="sudo tail -f /var/log/coolify-install.log"
 ```
 
-### Check Tailscale from container
+### Check GCS mount
 ```bash
-gcloud compute ssh easypanel-server --zone=us-central1-a --command='sudo docker exec $(sudo docker ps -q --filter name=tailscale) tailscale status'
+gcloud compute ssh coolify-server --zone=us-central1-a --command="mountpoint /mnt/gcs-storage && ls /mnt/gcs-storage"
 ```
 
-### Check host has Tailscale access
+### Upgrade Coolify
 ```bash
-gcloud compute ssh easypanel-server --zone=us-central1-a --command='ping -c 1 100.100.100.100'
+gcloud compute ssh coolify-server --zone=us-central1-a --command="sudo /data/coolify/source/upgrade.sh"
 ```
 
 ### Trigger CI/CD manually
 ```bash
 git commit --allow-empty -m "Trigger CI/CD" && git push
+```
+
+## Coolify CLI
+
+Installed at `/usr/local/bin/coolify` (v1.4.0)
+
+```bash
+# SSH to server
+gcloud compute ssh coolify-server --zone=us-central1-a
+
+# List apps
+coolify app list
+
+# List servers
+coolify server list
+
+# Restart an app
+coolify app restart <uuid>
+
+# View logs
+coolify app logs <uuid>
+```
+
+### CLI Configuration
+
+Config stored at: `~/.config/coolify/config.json`
+
+```bash
+# Add context
+coolify context add local http://localhost:8000 '<api-token>' --default
 ```
 
 ## GitHub Secrets Required
@@ -115,28 +182,24 @@ git commit --allow-empty -m "Trigger CI/CD" && git push
 |--------|-------------|
 | `GCP_CREDENTIALS` | Service account JSON key |
 | `TF_VAR_PROJECT_ID` | GCP project ID |
-| `TF_VAR_EXISTING_IP_NAME` | Static IP name |
-| `TF_VAR_EXISTING_IP_ADDRESS` | Static IP address |
-| `TF_VAR_GCS_BUCKET_NAME` | GCS bucket for gcsfuse mount |
+| `TF_VAR_GCS_BUCKET_NAME` | GCS bucket for gcsfuse mount (optional) |
 
 ## Service Account Permissions
 
 The `terraform-ci` service account needs:
 - `roles/compute.admin` - Manage GCE resources
-- `roles/storage.admin` - Manage GCS state bucket
+- `roles/storage.admin` - Manage GCS state bucket and gcsfuse access
 - `roles/iam.serviceAccountUser` on default compute SA - Create instances
-
-## Security
-
-- Only ports 22, 80, 443 are open (GCP firewall + ufw)
-- All services accessed via Traefik on port 80/443 with domain routing
-- No direct access to internal ports (3000, 5678, etc.)
-- Journald logs limited to 100M / 7 days
 
 ## Gotchas
 
-1. **Terraform version**: Requires >= 1.9 for `templatestring()` function
-2. **fstab duplication**: Script checks before appending GCS mount to prevent duplicates
+1. **Terraform version**: Requires >= 1.0
+2. **fstab duplication**: Script removes existing mount line before appending
 3. **Service account permissions**: CI needs `serviceAccountUser` role on compute SA
-4. **State migration**: Run `terraform init -migrate-state` when enabling GCS backend
-5. **Tailscale exit node**: Must be approved in Tailscale admin console after advertising
+4. **State migration**: Run `terraform init -reconfigure` when changing backend
+5. **prevent_destroy**: Must be removed from main.tf before full terraform destroy
+6. **Coolify port**: UI is on port 8000, not 80/443
+7. **Realtime service**: Requires ports 6001-6002 open in firewall
+8. **Coolify CLI volumes**: Does not support volume management - must use UI
+9. **sslip.io**: Rate-limited for Let's Encrypt - use custom domains
+10. **n8n permissions**: Runs as uid 1000 - host directories need `chown 1000:1000`

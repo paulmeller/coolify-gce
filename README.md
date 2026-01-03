@@ -1,15 +1,15 @@
-# Easypanel on Google Compute Engine (Terraform)
+# Coolify on Google Compute Engine (Terraform)
 
-Deploy [Easypanel](https://easypanel.io) - a modern server control panel - on Google Compute Engine using Terraform.
+Deploy [Coolify](https://coolify.io) - an open-source, self-hostable Heroku/Netlify alternative - on Google Compute Engine using Terraform.
 
 ## Features
 
-- **Automated Setup**: Docker and Easypanel installed via startup script
+- **Automated Setup**: Docker and Coolify installed via startup script
 - **Idempotent Boots**: Fast restarts (~10s) with service preservation across `terraform destroy/apply`
-- **Static IP**: Persistent external IP address
-- **GCS Storage**: Mount Google Cloud Storage buckets via gcsfuse
+- **Persistent Disk**: Boot disk survives instance deletion (`prevent_destroy = true`)
+- **Static IP**: Persistent external IP address (also survives destroy)
+- **GCS Storage**: Optional GCS bucket mounting via gcsfuse
 - **CI/CD Ready**: GitHub Actions workflow for auto-deploy on push
-- **Daily Backups**: Automatic disk snapshots with 3-day retention
 - **Ubuntu 24.04 LTS**: Latest long-term support release
 
 ## Prerequisites
@@ -20,7 +20,7 @@ Deploy [Easypanel](https://easypanel.io) - a modern server control panel - on Go
    gcloud auth application-default login
    ```
 
-2. **Terraform** >= 1.9 installed
+2. **Terraform** >= 1.0 installed
    ```bash
    # macOS
    brew install terraform
@@ -59,19 +59,19 @@ terraform plan
 terraform apply
 ```
 
-### 3. Access Easypanel
+### 3. Access Coolify
 
-After deployment completes (~3-5 minutes for first installation):
+After deployment completes (~5-10 minutes for first installation):
 
 ```bash
-# Get the Easypanel URL
-terraform output easypanel_url
+# Get the Coolify URL
+terraform output coolify_url
 
-# Check installation progress
-terraform output installation_log_command | bash
+# SSH to check logs
+gcloud compute ssh coolify-server --zone=us-central1-a --command="sudo tail -f /var/log/coolify-install.log"
 ```
 
-Open the URL in your browser to complete Easypanel setup.
+Open the URL in your browser (port 8000) to complete Coolify setup.
 
 ## Configuration Options
 
@@ -82,11 +82,9 @@ Open the URL in your browser to complete Easypanel setup.
 | `zone` | GCP Zone | `us-central1-a` |
 | `machine_type` | Instance type | `e2-medium` |
 | `disk_size` | Boot disk (GB) | `50` |
-| `instance_name` | Instance name | `easypanel-server` |
-| `existing_ip_name` | Use existing static IP | `""` |
-| `existing_ip_address` | Existing IP address | `""` |
-| `gcs_bucket_name` | GCS bucket to mount | `""` |
-| `gcs_mount_path` | Mount path for GCS bucket | `/mnt/easypanel-storage` |
+| `instance_name` | Instance name | `coolify-server` |
+| `gcs_bucket_name` | GCS bucket to mount (optional) | `""` |
+| `gcs_mount_path` | Mount path for GCS bucket | `/mnt/gcs-storage` |
 
 ### Recommended Machine Types
 
@@ -97,49 +95,17 @@ Open the URL in your browser to complete Easypanel setup.
 | `e2-standard-2` | 2 | 8GB | Production |
 | `e2-standard-4` | 4 | 16GB | Heavy workloads |
 
-## Tailscale Integration
+## GCS FUSE Storage (Optional)
 
-Tailscale is managed via Easypanel container (not host-level) for easier configuration.
+Mount a GCS bucket for persistent storage across deployments:
 
-### Setup in Easypanel
-
-Create a new service with this Docker Compose:
-
-```yaml
-services:
-  tailscale:
-    image: tailscale/tailscale:latest
-    hostname: easypanel
-    network_mode: host
-    privileged: true
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    volumes:
-      - /dev/net/tun:/dev/net/tun
-      - tailscale-data:/var/lib/tailscale
-    environment:
-      TS_STATE_DIR: /var/lib/tailscale
-      TS_AUTHKEY: ${TS_AUTHKEY}
-      TS_HOSTNAME: easypanel
-      TS_USERSPACE: "false"
-      TS_EXTRA_ARGS: --advertise-tags=tag:container --accept-routes --advertise-exit-node
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-volumes:
-  tailscale-data:
+```hcl
+# terraform.tfvars
+gcs_bucket_name = "your-bucket-name"
+gcs_mount_path  = "/mnt/gcs-storage"  # optional, this is the default
 ```
 
-### Key Settings
-
-- `network_mode: host` + `TS_USERSPACE: "false"` - Creates `tailscale0` interface on host
-- `TS_AUTHKEY` - Generate at https://login.tailscale.com/admin/settings/keys (reusable, no expiry)
-- `--advertise-exit-node` - Requires approval in Tailscale admin console
+The bucket will be mounted automatically on both first boot and quick boot paths.
 
 ## CI/CD with GitHub Actions
 
@@ -179,20 +145,16 @@ This repo includes a GitHub Actions workflow that auto-deploys on push to `main`
      --iam-account=terraform-ci@YOUR_PROJECT.iam.gserviceaccount.com
    ```
 
-   > **Note**: Replace `YOUR_PROJECT_NUMBER` with your GCP project number (find it with `gcloud projects describe YOUR_PROJECT --format='value(projectNumber)'`)
-
-3. **Add GitHub Secrets** (Settings → Secrets → Actions):
+3. **Add GitHub Secrets** (Settings > Secrets > Actions):
    - `GCP_CREDENTIALS` - Contents of `terraform-ci-key.json`
    - `TF_VAR_PROJECT_ID` - Your GCP project ID
-   - `TF_VAR_EXISTING_IP_NAME` - Static IP name (if using)
-   - `TF_VAR_EXISTING_IP_ADDRESS` - Static IP address (if using)
-   - `TF_VAR_GCS_BUCKET_NAME` - GCS bucket for storage (if using)
+   - `TF_VAR_GCS_BUCKET_NAME` - GCS bucket for storage (optional)
 
 4. **Update backend** in `main.tf`:
    ```hcl
    backend "gcs" {
      bucket = "YOUR_PROJECT-terraform-state"
-     prefix = "easypanel"
+     prefix = "coolify"
    }
    ```
 
@@ -206,24 +168,34 @@ This repo includes a GitHub Actions workflow that auto-deploys on push to `main`
 The startup script detects existing installations and takes a fast path on subsequent boots:
 
 - **First boot**: Full installation (~5-10 minutes)
+  - Installs Docker and Coolify
+  - Installs gcsfuse (if GCS bucket configured)
+  - Mounts GCS bucket
+  - Creates `/data/coolify/.env` marker
+
 - **Subsequent boots**: Quick boot (~10 seconds)
   - Starts Docker
   - Mounts GCS bucket (if configured)
   - **Preserves all running services**
 
-This means `terraform destroy` + `terraform apply` preserves your Easypanel projects and running containers.
+This means `terraform destroy` + `terraform apply` preserves your Coolify projects and running containers (disk persists).
 
 ## Security Notes
 
 ### Firewall
 
-Only ports 22 (SSH), 80 (HTTP), and 443 (HTTPS) are open. All services are accessed via Traefik reverse proxy on port 80/443 with domain-based routing.
+Open ports:
+- 22 (SSH)
+- 80 (HTTP)
+- 443 (HTTPS)
+- 8000 (Coolify UI)
+- 6001-6002 (Coolify realtime services)
 
 ### Set Up a Domain
 
 After installation:
 1. Point your domain's A record to the external IP
-2. Configure the domain in Easypanel settings
+2. Configure the domain in Coolify settings
 3. Enable Let's Encrypt for automatic HTTPS
 
 ## Outputs
@@ -231,11 +203,9 @@ After installation:
 After deployment, Terraform provides:
 
 ```bash
-terraform output external_ip          # Server IP address
-terraform output easypanel_url        # Admin panel URL
-terraform output ssh_command          # SSH access command
-terraform output installation_log_command  # View install logs
-terraform output gcs_mount_info       # GCS mount status
+terraform output external_ip    # Server IP address
+terraform output coolify_url    # Admin panel URL (port 8000)
+terraform output ssh_command    # SSH access command
 ```
 
 ## Troubleshooting
@@ -244,23 +214,23 @@ terraform output gcs_mount_info       # GCS mount status
 
 ```bash
 # SSH into the instance
-gcloud compute ssh easypanel-server --zone=us-central1-a
+gcloud compute ssh coolify-server --zone=us-central1-a
 
 # View installation log
-sudo tail -f /var/log/easypanel-install.log
+sudo tail -f /var/log/coolify-install.log
 
-# Check Docker services
-sudo docker service ls
-
-# List running containers
+# Check Coolify containers
 sudo docker ps
+
+# Check GCS mount
+mountpoint /mnt/gcs-storage
 ```
 
 ### Common Issues
 
 **Services not starting after reboot**: Check if quick boot path was taken:
 ```bash
-sudo head -20 /var/log/easypanel-install.log
+sudo head -20 /var/log/coolify-install.log
 ```
 
 **GCS mount failed**: Verify bucket exists and service account has access:
@@ -270,20 +240,28 @@ gsutil ls gs://YOUR_BUCKET
 
 **Firewall blocking**: Verify firewall rules are applied:
 ```bash
-gcloud compute firewall-rules list --filter="name~easypanel"
+gcloud compute firewall-rules list --filter="name~coolify"
 ```
+
+**Realtime service not connecting**: Ensure ports 6001-6002 are open in firewall.
 
 ## Cleanup
 
-Remove all resources (disk is preserved by default):
+Remove instance and firewall (disk and IP are preserved):
 
+```bash
+terraform destroy -target=google_compute_instance.coolify -target=google_compute_firewall.coolify
+```
+
+To fully destroy everything (requires removing `prevent_destroy` from main.tf):
 ```bash
 terraform destroy
 ```
 
-To also delete the disk:
+To manually delete preserved resources:
 ```bash
-gcloud compute disks delete easypanel-server-boot --zone=us-central1-a
+gcloud compute disks delete coolify-server-disk --zone=us-central1-a
+gcloud compute addresses delete coolify-server-ip --region=us-central1
 ```
 
 ## Cost Estimate

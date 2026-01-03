@@ -10,13 +10,24 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+tfplan
 
 # Secrets
 *.pem
 *.key
 credentials.json
+terraform-ci-key.json
 
 # OS
 .DS_Store
-terraform-ci-key.json
-tfplan
+Thumbs.db
+
+# Editors
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Claude
+.claude/
