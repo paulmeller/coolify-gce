@@ -182,7 +182,7 @@ coolify context add local http://localhost:8000 '<api-token>' --default
 |--------|-------------|
 | `GCP_CREDENTIALS` | Service account JSON key |
 | `TF_VAR_PROJECT_ID` | GCP project ID |
-| `TF_VAR_GCS_BUCKET_NAME` | GCS bucket for gcsfuse mount (optional) |
+| `TF_VAR_GCS_BUCKET_NAME` | GCS bucket for gcsfuse mount (optional, leave empty to skip) |
 
 ## Service Account Permissions
 

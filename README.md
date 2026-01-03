@@ -148,7 +148,7 @@ This repo includes a GitHub Actions workflow that auto-deploys on push to `main`
 3. **Add GitHub Secrets** (Settings > Secrets > Actions):
    - `GCP_CREDENTIALS` - Contents of `terraform-ci-key.json`
    - `TF_VAR_PROJECT_ID` - Your GCP project ID
-   - `TF_VAR_GCS_BUCKET_NAME` - GCS bucket for storage (optional)
+   - `TF_VAR_GCS_BUCKET_NAME` - GCS bucket for gcsfuse mount (optional, leave empty to skip)
 
 4. **Update backend** in `main.tf`:
    ```hcl

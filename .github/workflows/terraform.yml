@@ -8,8 +8,6 @@ on:
 
 env:
   TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
-  TF_VAR_existing_ip_name: ${{ secrets.TF_VAR_EXISTING_IP_NAME }}
-  TF_VAR_existing_ip_address: ${{ secrets.TF_VAR_EXISTING_IP_ADDRESS }}
   TF_VAR_gcs_bucket_name: ${{ secrets.TF_VAR_GCS_BUCKET_NAME }}
 
 jobs:
