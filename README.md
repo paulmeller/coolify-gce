@@ -6,8 +6,9 @@ Deploy [Coolify](https://coolify.io) - an open-source, self-hostable Heroku/Netl
 
 - **Automated Setup**: Docker and Coolify installed via startup script
 - **Idempotent Boots**: Fast restarts (~10s) with service preservation across `terraform destroy/apply`
-- **Persistent Disk**: Boot disk survives instance deletion (`prevent_destroy = true`)
-- **Static IP**: Persistent external IP address (also survives destroy)
+- **Separate Data Disk**: `/data` on dedicated persistent SSD (`prevent_destroy = true`)
+- **Ephemeral Boot Disk**: OS-only, can be recreated (data safe on data disk)
+- **Static IP**: Use existing reserved IP or create new persistent IP
 - **GCS Storage**: Optional GCS bucket mounting via gcsfuse
 - **CI/CD Ready**: GitHub Actions workflow for auto-deploy on push
 - **Ubuntu 24.04 LTS**: Latest long-term support release
@@ -81,10 +82,13 @@ Open the URL in your browser (port 8000) to complete Coolify setup.
 | `region` | GCP Region | `us-central1` |
 | `zone` | GCP Zone | `us-central1-a` |
 | `machine_type` | Instance type | `e2-medium` |
-| `disk_size` | Boot disk (GB) | `50` |
+| `disk_size` | Boot disk (GB) | `20` |
+| `data_disk_size` | Data disk for /data (GB) | `50` |
 | `instance_name` | Instance name | `coolify-server` |
 | `gcs_bucket_name` | GCS bucket to mount (optional) | `""` |
 | `gcs_mount_path` | Mount path for GCS bucket | `/mnt/gcs-storage` |
+| `existing_ip_name` | Name of existing reserved IP | `""` |
+| `existing_ip_address` | Use existing static IP | `""` (creates new) |
 
 ### Recommended Machine Types
 
@@ -165,20 +169,34 @@ This repo includes a GitHub Actions workflow that auto-deploys on push to `main`
 
 ## Idempotent Startup
 
-The startup script detects existing installations and takes a fast path on subsequent boots:
+The startup script has three boot paths:
 
-- **First boot**: Full installation (~5-10 minutes)
+- **Fresh Install**: No existing config (~5-10 minutes)
+  - Formats and mounts data disk to `/data`
   - Installs Docker and Coolify
+  - Creates SSH key for localhost server
   - Installs gcsfuse (if GCS bucket configured)
-  - Mounts GCS bucket
-  - Creates `/data/coolify/.env` marker
 
-- **Subsequent boots**: Quick boot (~10 seconds)
-  - Starts Docker
-  - Mounts GCS bucket (if configured)
-  - **Preserves all running services**
+- **Quick Boot**: Config exists, postgres volume intact (~10 seconds)
+  - Mounts data disk
+  - Starts existing Coolify containers
+  - **Preserves everything** - used for normal reboots
 
-This means `terraform destroy` + `terraform apply` preserves your Coolify projects and running containers (disk persists).
+- **Recovery Boot**: Config exists, but postgres volume empty (~5-10 minutes)
+  - Preserves existing `.env` (contains APP_KEY)
+  - Runs fresh Coolify install
+  - Restores original APP_KEY
+  - Restores database from backup (if available in `/data/coolify/backups/`)
+  - **Used after `terraform destroy` + `terraform apply`**
+
+### Persistence Strategy
+
+| Location | Persists across | Contains |
+|----------|-----------------|----------|
+| Boot disk | Reboots only | Coolify app, postgres Docker volume |
+| Data disk `/data` | Destroy/apply cycles | Config, SSH keys, backups, user apps |
+
+**Important**: Enable Coolify's built-in backups (Settings > Backup) for full recovery after `terraform destroy`.
 
 ## Security Notes
 
@@ -271,12 +289,13 @@ Approximate monthly costs (us-central1):
 | Component | Cost |
 |-----------|------|
 | e2-medium instance | ~$25/month |
-| 50GB SSD disk | ~$8/month |
+| 20GB SSD boot disk | ~$3/month |
+| 50GB SSD data disk | ~$8/month |
 | Static IP (in use) | Free |
 | GCS storage | ~$0.02/GB/month |
 | Network egress | Variable |
 
-**Total**: ~$33/month minimum
+**Total**: ~$36/month minimum
 
 Use [Google Cloud Pricing Calculator](https://cloud.google.com/products/calculator) for precise estimates.
 

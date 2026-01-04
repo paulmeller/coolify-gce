@@ -18,9 +18,10 @@ Terraform configuration for deploying [Coolify](https://coolify.io) on Google Co
 ## Architecture
 
 - **GCE Instance**: `coolify-server` (e2-medium) running Ubuntu 24.04 LTS
-- **Boot Disk**: Persistent SSD (50GB) with `prevent_destroy = true` - survives terraform destroy
-- **Static IP**: Preserved with `prevent_destroy = true`
-- **Startup Script**: Idempotent - detects existing installation and takes quick boot path
+- **Boot Disk**: Ephemeral SSD (20GB) - can be recreated, OS only
+- **Data Disk**: Persistent SSD for `/data` with `prevent_destroy = true` - survives terraform destroy
+- **Static IP**: Can use existing reserved IP or create new (with `prevent_destroy = true`)
+- **Startup Script**: Idempotent - mounts data disk, detects existing installation
 - **State Storage**: GCS bucket (`context-prompt-terraform-state`)
 - **CI/CD**: GitHub Actions triggers `terraform apply` on push to main
 - **GCS FUSE**: Optional bucket mounting at `/mnt/gcs-storage`
@@ -29,26 +30,46 @@ Terraform configuration for deploying [Coolify](https://coolify.io) on Google Co
 
 ### Idempotent Startup Script
 
-The startup script in `main.tf` has two paths:
+The startup script in `main.tf` has three boot paths:
 
-1. **First boot**: Full installation (~5-10 min)
+1. **Fresh Install**: No `/data/coolify/source/.env` exists (~5-10 min)
+   - Formats data disk if needed, mounts to `/data`
    - Installs Docker and Coolify
+   - Creates SSH key for localhost server (fixes Coolify's missing key bug)
    - Installs gcsfuse (if GCS bucket configured)
-   - Mounts GCS bucket
-   - Creates `/data/coolify/.env` marker
 
-2. **Quick boot**: Detected via `/data/coolify/.env` (~10 sec)
-   - Starts Docker
-   - Mounts GCS bucket (if configured)
-   - **Preserves Docker containers and services**
+2. **Quick Boot**: `.env` exists AND postgres Docker volume has data (~10 sec)
+   - Mounts data disk to `/data`
+   - Starts existing Coolify containers
+   - **Preserves everything** - used for normal reboots
+
+3. **Recovery Boot**: `.env` exists BUT postgres volume is empty/missing (~5-10 min)
+   - Preserves existing `.env` (contains APP_KEY)
+   - Runs fresh Coolify install
+   - Restores original `.env` with APP_KEY
+   - Restores database from `/data/coolify/backups/` if available
+   - Syncs SSH keys from filesystem
+   - **Used after `terraform destroy/apply`**
+
+### Data Persistence Strategy
+
+- **Boot disk**: Ephemeral - Coolify app + postgres Docker volume
+- **Data disk `/data`**: Persistent - config, SSH keys, backups, user apps (n8n)
+
+After `terraform destroy/apply`, the recovery boot path automatically:
+1. Detects preserved config on data disk
+2. Reinstalls Coolify with same APP_KEY
+3. Restores database from backup
+
+**Important**: Enable Coolify's built-in backups (Settings > Backup) for full recovery support.
 
 ### Resource Persistence
 
-Both disk and static IP have `prevent_destroy = true`:
-- `google_compute_disk.coolify` - Boot disk persists across terraform destroy
-- `google_compute_address.coolify` - Static IP persists across terraform destroy
+- `google_compute_disk.coolify` - Boot disk (ephemeral, no prevent_destroy)
+- `google_compute_disk.coolify_data` - Data disk with `prevent_destroy = true`
+- `google_compute_address.coolify` - Static IP with `prevent_destroy = true` (if created)
 
-To destroy only the instance (preserving disk and IP):
+To destroy only the instance (preserving disks and IP):
 ```bash
 terraform destroy -target=google_compute_instance.coolify -target=google_compute_firewall.coolify
 ```
@@ -94,10 +115,13 @@ In the `locals` startup script block:
 | `region` | GCP Region | `us-central1` |
 | `zone` | GCP Zone | `us-central1-a` |
 | `machine_type` | Instance type | `e2-medium` |
-| `disk_size` | Boot disk (GB) | `50` |
+| `disk_size` | Boot disk (GB) | `20` |
+| `data_disk_size` | Data disk for /data (GB) | `50` |
 | `instance_name` | Instance name | `coolify-server` |
 | `gcs_bucket_name` | GCS bucket to mount | `""` (disabled) |
 | `gcs_mount_path` | Mount path for GCS | `/mnt/gcs-storage` |
+| `existing_ip_name` | Name of existing reserved IP | `""` |
+| `existing_ip_address` | Existing static IP to use | `""` (creates new) |
 
 ## Terraform Outputs
 
