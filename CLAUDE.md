@@ -35,7 +35,6 @@ The startup script in `main.tf` has three boot paths:
 1. **Fresh Install**: No `/data/coolify/source/.env` exists (~5-10 min)
    - Formats data disk if needed, mounts to `/data`
    - Installs Docker and Coolify
-   - Creates SSH key for localhost server (fixes Coolify's missing key bug)
    - Installs gcsfuse (if GCS bucket configured)
 
 2. **Quick Boot**: `.env` exists AND postgres Docker volume has data (~10 sec)
@@ -172,12 +171,20 @@ git commit --allow-empty -m "Trigger CI/CD" && git push
 
 ## Coolify CLI
 
-Installed at `/usr/local/bin/coolify` (v1.4.0)
+Install locally from GitHub releases:
 
 ```bash
-# SSH to server
-gcloud compute ssh coolify-server --zone=us-central1-a
+# Download and install
+curl -fsSL https://github.com/coollabsio/coolify-cli/releases/download/v1.4.0/coolify-cli-darwin-arm64.tar.gz | tar xz
+mv coolify ~/bin/  # or /usr/local/bin/
 
+# Configure context (get API token from Coolify UI > Settings > API)
+coolify context add coolify http://35.184.84.184:8000 '<api-token>' --default
+```
+
+### Common Commands
+
+```bash
 # List apps
 coolify app list
 
@@ -194,11 +201,6 @@ coolify app logs <uuid>
 ### CLI Configuration
 
 Config stored at: `~/.config/coolify/config.json`
-
-```bash
-# Add context
-coolify context add local http://localhost:8000 '<api-token>' --default
-```
 
 ## GitHub Secrets Required
 

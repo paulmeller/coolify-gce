@@ -174,7 +174,6 @@ The startup script has three boot paths:
 - **Fresh Install**: No existing config (~5-10 minutes)
   - Formats and mounts data disk to `/data`
   - Installs Docker and Coolify
-  - Creates SSH key for localhost server
   - Installs gcsfuse (if GCS bucket configured)
 
 - **Quick Boot**: Config exists, postgres volume intact (~10 seconds)
