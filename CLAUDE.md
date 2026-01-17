@@ -203,7 +203,10 @@ coolify app logs <uuid>   # View logs
 |--------|-------|-------------|
 | `GCP_CREDENTIALS` | Both | Service account JSON key |
 | `TF_VAR_PROJECT_ID` | Compute | GCP project ID |
-| `TF_VAR_GCS_BUCKET_NAME` | Compute | GCS bucket for gcsfuse (optional) |
+| `TF_VAR_DISK_SIZE` | Compute | Boot disk size in GB |
+| `TF_VAR_GCS_BUCKET_NAME` | Compute | GCS bucket for gcsfuse |
+| `TF_VAR_EXISTING_IP_NAME` | Compute | Name of existing static IP |
+| `TF_VAR_EXISTING_IP_ADDRESS` | Compute | Existing static IP address |
 | `GODADDY_API_KEY` | DNS | GoDaddy API key |
 | `GODADDY_API_SECRET` | DNS | GoDaddy API secret |
 
