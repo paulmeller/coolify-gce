@@ -26,6 +26,8 @@ on:
         required: false
       TF_VAR_EXISTING_IP_ADDRESS:
         required: false
+      TF_VAR_DISK_SIZE:
+        required: false
       GODADDY_API_KEY:
         required: false
       GODADDY_API_SECRET:
@@ -43,6 +45,7 @@ jobs:
       TF_VAR_gcs_bucket_name: ${{ secrets.TF_VAR_GCS_BUCKET_NAME }}
       TF_VAR_existing_ip_name: ${{ secrets.TF_VAR_EXISTING_IP_NAME }}
       TF_VAR_existing_ip_address: ${{ secrets.TF_VAR_EXISTING_IP_ADDRESS }}
+      TF_VAR_disk_size: ${{ secrets.TF_VAR_DISK_SIZE }}
       TF_VAR_godaddy_api_key: ${{ secrets.GODADDY_API_KEY }}
       TF_VAR_godaddy_api_secret: ${{ secrets.GODADDY_API_SECRET }}
 
