@@ -5,6 +5,7 @@
 *.tfvars
 !*.tfvars.example
 .terraform.lock.hcl
+stacks/*/terraform.tfvars
 crash.log
 override.tf
 override.tf.json
@@ -17,6 +18,12 @@ tfplan
 *.key
 credentials.json
 terraform-ci-key.json
+.env
+
+# GoDaddy DNS utilities
+utils/dns_records.json
+utils/fetch_dns.sh
+utils/generate_terraform.py
 
 # OS
 .DS_Store

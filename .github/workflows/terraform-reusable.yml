@@ -1,0 +1,78 @@
+# Reusable Terraform Workflow Template
+# Called by stack-specific workflows
+
+name: Terraform Reusable
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: 'Directory containing Terraform files'
+        required: true
+        type: string
+      terraform_version:
+        description: 'Terraform version to use'
+        required: false
+        type: string
+        default: '1.9'
+    secrets:
+      GCP_CREDENTIALS:
+        required: true
+      TF_VAR_PROJECT_ID:
+        required: false
+      TF_VAR_GCS_BUCKET_NAME:
+        required: false
+      GODADDY_API_KEY:
+        required: false
+      GODADDY_API_SECRET:
+        required: false
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    env:
+      TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
+      TF_VAR_gcs_bucket_name: ${{ secrets.TF_VAR_GCS_BUCKET_NAME }}
+      TF_VAR_godaddy_api_key: ${{ secrets.GODADDY_API_KEY }}
+      TF_VAR_godaddy_api_secret: ${{ secrets.GODADDY_API_SECRET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check
+        continue-on-error: true
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -input=false
+        continue-on-error: true
+
+      - name: Terraform Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve -input=false

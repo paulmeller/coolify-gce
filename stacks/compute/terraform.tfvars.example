@@ -1,0 +1,16 @@
+# Compute Stack - Example Variables
+# Copy to terraform.tfvars and fill in your values
+
+project_id = "your-gcp-project-id"
+
+# Optional overrides
+# region              = "us-central1"
+# zone                = "us-central1-a"
+# machine_type        = "e2-medium"
+# disk_size           = 20
+# data_disk_size      = 50
+# instance_name       = "coolify-server"
+# gcs_bucket_name     = ""
+# gcs_mount_path      = "/mnt/gcs-storage"
+# existing_ip_name    = ""
+# existing_ip_address = ""

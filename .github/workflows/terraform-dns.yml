@@ -1,0 +1,30 @@
+# DNS Stack CI/CD
+# Triggers on changes to DNS configuration
+
+name: Terraform DNS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'stacks/dns/**'
+      - 'modules/godaddy-domain/**'
+      - '.github/workflows/terraform-dns.yml'
+      - '.github/workflows/terraform-reusable.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'stacks/dns/**'
+      - 'modules/godaddy-domain/**'
+      - '.github/workflows/terraform-dns.yml'
+      - '.github/workflows/terraform-reusable.yml'
+
+jobs:
+  terraform:
+    uses: ./.github/workflows/terraform-reusable.yml
+    with:
+      working_directory: stacks/dns
+    secrets:
+      GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+      GODADDY_API_KEY: ${{ secrets.GODADDY_API_KEY }}
+      GODADDY_API_SECRET: ${{ secrets.GODADDY_API_SECRET }}

@@ -1,0 +1,30 @@
+# Compute Stack CI/CD
+# Triggers on changes to compute infrastructure
+
+name: Terraform Compute
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'stacks/compute/**'
+      - 'modules/gce-coolify/**'
+      - '.github/workflows/terraform-compute.yml'
+      - '.github/workflows/terraform-reusable.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'stacks/compute/**'
+      - 'modules/gce-coolify/**'
+      - '.github/workflows/terraform-compute.yml'
+      - '.github/workflows/terraform-reusable.yml'
+
+jobs:
+  terraform:
+    uses: ./.github/workflows/terraform-reusable.yml
+    with:
+      working_directory: stacks/compute
+    secrets:
+      GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+      TF_VAR_PROJECT_ID: ${{ secrets.TF_VAR_PROJECT_ID }}
+      TF_VAR_GCS_BUCKET_NAME: ${{ secrets.TF_VAR_GCS_BUCKET_NAME }}
