@@ -1,6 +1,3 @@
-# DNS Stack - Domain Records
-# All GoDaddy DNS domain configurations
-
 # agentstep.com
 resource "godaddy_domain_record" "agentstep_com" {
   domain = "agentstep.com"
@@ -206,6 +203,46 @@ resource "godaddy_domain_record" "borderproof_com" {
 
   record {
     name = "@"
+    type = "MX"
+    data = "aspmx.l.google.com"
+    ttl  = 3600
+    priority = 1
+  }
+
+  record {
+    name = "@"
+    type = "MX"
+    data = "alt4.aspmx.l.google.com"
+    ttl  = 3600
+    priority = 10
+  }
+
+  record {
+    name = "@"
+    type = "MX"
+    data = "alt3.aspmx.l.google.com"
+    ttl  = 3600
+    priority = 10
+  }
+
+  record {
+    name = "@"
+    type = "MX"
+    data = "alt1.aspmx.l.google.com"
+    ttl  = 3600
+    priority = 5
+  }
+
+  record {
+    name = "@"
+    type = "MX"
+    data = "alt2.aspmx.l.google.com"
+    ttl  = 3600
+    priority = 5
+  }
+
+  record {
+    name = "@"
     type = "TXT"
     data = "google-site-verification=Ye0naHY5n1hvrGw-qZ3UFqNV4WaHSCCvpAtJ5u7v2KU"
     ttl  = 3600
@@ -223,47 +260,6 @@ resource "godaddy_domain_record" "borderproof_com" {
     type = "TXT"
     data = "replit-verify=c4028d4e-1d34-4b4d-ad2d-6755b7fe59b9"
     ttl  = 3600
-  }
-
-  # Google Workspace MX records
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 1
-  }
-
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ALT1.ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 5
-  }
-
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ALT2.ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 5
-  }
-
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ALT3.ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 10
-  }
-
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ALT4.ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 10
   }
 
 }
@@ -488,11 +484,58 @@ resource "godaddy_domain_record" "contextprompt_com" {
   }
 
   record {
+    name = "@"
+    type = "MX"
+    data = "aspmx.l.google.com"
+    ttl  = 3600
+    priority = 1
+  }
+
+  record {
+    name = "@"
+    type = "MX"
+    data = "alt3.aspmx.l.google.com"
+    ttl  = 3600
+    priority = 10
+  }
+
+  record {
+    name = "@"
+    type = "MX"
+    data = "alt4.aspmx.l.google.com"
+    ttl  = 3600
+    priority = 10
+  }
+
+  record {
+    name = "@"
+    type = "MX"
+    data = "alt1.aspmx.l.google.com"
+    ttl  = 3600
+    priority = 5
+  }
+
+  record {
+    name = "@"
+    type = "MX"
+    data = "alt2.aspmx.l.google.com"
+    ttl  = 3600
+    priority = 5
+  }
+
+  record {
     name = "send"
     type = "MX"
     data = "feedback-smtp.us-east-1.amazonses.com"
     ttl  = 3600
     priority = 10
+  }
+
+  record {
+    name = "@"
+    type = "TXT"
+    data = "google-site-verification=R_h5UyH-INKG8TDcKqFMj55yT2ScQuPvnX6Q828Jx0Q"
+    ttl  = 3600
   }
 
   record {
@@ -535,47 +578,6 @@ resource "godaddy_domain_record" "contextprompt_com" {
     type = "TXT"
     data = "v=spf1 include:amazonses.com ~all"
     ttl  = 3600
-  }
-
-  # Google Workspace MX records
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 1
-  }
-
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ALT1.ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 5
-  }
-
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ALT2.ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 5
-  }
-
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ALT3.ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 10
-  }
-
-  record {
-    name     = "@"
-    type     = "MX"
-    data     = "ALT4.ASPMX.L.GOOGLE.COM"
-    ttl      = 3600
-    priority = 10
   }
 
 }
@@ -1091,14 +1093,6 @@ resource "godaddy_domain_record" "meller_com_au" {
   record {
     name = "@"
     type = "MX"
-    data = "alt3.aspmx.l.google.com"
-    ttl  = 3600
-    priority = 10
-  }
-
-  record {
-    name = "@"
-    type = "MX"
     data = "alt4.aspmx.l.google.com"
     ttl  = 3600
     priority = 10
@@ -1107,7 +1101,15 @@ resource "godaddy_domain_record" "meller_com_au" {
   record {
     name = "@"
     type = "MX"
-    data = "alt1.aspmx.l.google.com"
+    data = "alt3.aspmx.l.google.com"
+    ttl  = 3600
+    priority = 10
+  }
+
+  record {
+    name = "@"
+    type = "MX"
+    data = "alt2.aspmx.l.google.com"
     ttl  = 3600
     priority = 5
   }
@@ -1115,7 +1117,7 @@ resource "godaddy_domain_record" "meller_com_au" {
   record {
     name = "@"
     type = "MX"
-    data = "alt2.aspmx.l.google.com"
+    data = "alt1.aspmx.l.google.com"
     ttl  = 3600
     priority = 5
   }
@@ -2029,7 +2031,7 @@ resource "godaddy_domain_record" "workwireless_com_au" {
   record {
     name = "@"
     type = "MX"
-    data = "alt3.aspmx.l.google.com"
+    data = "alt4.aspmx.l.google.com"
     ttl  = 3600
     priority = 10
   }
@@ -2037,7 +2039,7 @@ resource "godaddy_domain_record" "workwireless_com_au" {
   record {
     name = "@"
     type = "MX"
-    data = "alt4.aspmx.l.google.com"
+    data = "alt3.aspmx.l.google.com"
     ttl  = 3600
     priority = 10
   }
@@ -2183,3 +2185,4 @@ resource "godaddy_domain_record" "zeroshotventures_com" {
   }
 
 }
+
