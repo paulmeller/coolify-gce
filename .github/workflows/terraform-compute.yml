@@ -1,5 +1,6 @@
 # Compute Stack CI/CD
 # Triggers on changes to compute infrastructure
+# Verified: 2026-01-17
 
 name: Terraform Compute
 
