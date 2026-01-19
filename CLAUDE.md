@@ -111,6 +111,7 @@ The startup script in `modules/gce-coolify/main.tf` has three boot paths:
 | 22 | SSH |
 | 80 | HTTP (Traefik) |
 | 443 | HTTPS (Traefik) |
+| 4200 | Prefect UI |
 | 8000 | Coolify UI |
 | 6001-6002 | Coolify realtime service |
 

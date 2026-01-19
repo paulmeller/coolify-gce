@@ -22,7 +22,7 @@ resource "google_compute_firewall" "coolify" {
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "80", "443", "8000", "6001", "6002"]
+    ports    = ["22", "80", "443", "4200", "8000", "6001", "6002"]
   }
 
   source_ranges = ["0.0.0.0/0"]
