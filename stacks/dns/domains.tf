@@ -456,6 +456,13 @@ resource "godaddy_domain_record" "contextprompt_com" {
   }
 
   record {
+    name = "prefect"
+    type = "A"
+    data = "35.184.84.184"
+    ttl  = 600
+  }
+
+  record {
     name = "router"
     type = "A"
     data = "34.111.179.208"
