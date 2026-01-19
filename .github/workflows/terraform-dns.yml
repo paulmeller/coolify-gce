@@ -11,13 +11,6 @@ on:
       - 'modules/godaddy-domain/**'
       - '.github/workflows/terraform-dns.yml'
       - '.github/workflows/terraform-reusable.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'stacks/dns/**'
-      - 'modules/godaddy-domain/**'
-      - '.github/workflows/terraform-dns.yml'
-      - '.github/workflows/terraform-reusable.yml'
 
 jobs:
   terraform:
