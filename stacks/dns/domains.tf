@@ -176,7 +176,7 @@ resource "godaddy_domain_record" "borderproof_com" {
   record {
     name = "www"
     type = "A"
-    data = "34.111.254.92"
+    data = "34.111.179.208"
     ttl  = 600
   }
 
@@ -265,7 +265,7 @@ resource "godaddy_domain_record" "borderproof_com" {
   record {
     name = "www"
     type = "TXT"
-    data = "replit-verify=c4028d4e-1d34-4b4d-ad2d-6755b7fe59b9"
+    data = "replit-verify=e4b86981-7c47-48d4-82b9-3c3ed5a010e7"
     ttl  = 3600
   }
 
